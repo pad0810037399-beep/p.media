@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phat Social - Public Portal</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --green: #238636; --blue: #58a6ff; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 60px; }
+        nav { background: var(--card); padding: 15px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; sticky: top; z-index: 100; }
+        .container { max-width: 500px; margin: auto; padding: 15px; }
+        .box { background: var(--card); padding: 15px; border-radius: 12px; border: 1px solid #30363d; margin-bottom: 15px; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 5px 0; background: var(--bg); border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 5px; }
+        .btn-blue { background: var(--blue); color: white; }
+        .btn-green { background: var(--green); color: white; }
+        .hidden { display: none; }
+        .media-content { width: 100%; border-radius: 8px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <strong onclick="showPage('home')" style="cursor:pointer;">PHAT SOCIAL</strong>
+    <span onclick="showPage('setting')" style="cursor:pointer;">⚙️ Settings</span>
+</nav>
+
+<div class="container">
+    <section id="page-home">
+        <button class="btn btn-blue" onclick="showPage('post')" style="margin-bottom:20px;">+ สร้างโพสต์ใหม่</button>
+        <div id="feed-area"></div>
+    </section>
+
+    <section id="page-post" class="hidden">
+        <div class="box">
+            <h3>📝 สร้างโพสต์ใหม่</h3>
+            <input type="text" id="p-name" placeholder="ชื่อของคุณ">
+            <input type="text" id="p-title" placeholder="หัวข้อเรื่อง">
+            <textarea id="p-content" rows="3" placeholder="เขียนข้อความของคุณ..."></textarea>
+            <input type="text" id="p-media" placeholder="วางลิงก์รูปภาพ หรือ ลิงก์วิดีโอ (YouTube)">
+            <select id="p-type">
+                <option value="image">เป็นรูปภาพ</option>
+                <option value="video">เป็นวิดีโอ (YouTube)</option>
+            </select>
+            <button class="btn btn-green" onclick="createPublicPost()">แชร์โพสต์</button>
+            <button class="btn" style="background:#444; color:white;" onclick="showPage('home')">ยกเลิก</button>
+        </div>
+    </section>
+
+    <section id="page-setting" class="hidden">
+        <div class="box">
+            <h3>⚙️ สำหรับแอดมินพัด</h3>
+            <input type="password" id="admin-key" placeholder="รหัสยืนยันแอดมิน (2222)">
+            <button class="btn btn-green" onclick="checkAdmin()">เข้าโหมดตั้งค่า</button>
+            <hr style="border:0.1px solid #333; margin:20px 0;">
+            <button class="btn" style="background:white; color:black;" onclick="loginWithGoogle()">Login with Google</button>
+        </div>
+    </section>
+</div>
+
+<script>
+    // รหัสเชื่อมต่อ Firebase ของคุณพัด
+    const firebaseConfig = {
+        apiKey: "AIzaSyAimYL0kh55YCivX1emXUFkx2rxVT19dcY",
+        authDomain: "pad1-b229b.firebaseapp.com",
+        projectId: "pad1-b229b",
+        storageBucket: "pad1-b229b.firebasestorage.app",
+        messagingSenderId: "28477080178",
+        appId: "1:28477080178:web:ed52e6b73128104e5738eb",
+        measurementId: "G-112GW2P71N"
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    function showPage(id) {
+        document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
+        document.getElementById('page-' + id).classList.remove('hidden');
+    }
+
+    function createPublicPost() {
+        const name = document.getElementById('p-name').value || "ไม่ระบุชื่อ";
+        const title = document.getElementById('p-title').value;
+        const content = document.getElementById('p-content').value;
+        const media = document.getElementById('p-media').value;
+        const type = document.getElementById('p-type').value;
+
+        if(title && content) {
+            const posts = JSON.parse(localStorage.getItem('public_posts') || "[]");
+            posts.unshift({ name, title, content, media, type, time: new Date().toLocaleString() });
+            localStorage.setItem('public_posts', JSON.stringify(posts));
+            alert("โพสต์สำเร็จแล้ว!");
+            renderFeed();
+            showPage('home');
+        } else {
+            alert("กรุณาใส่หัวข้อและเนื้อหา");
+        }
+    }
+
+    function renderFeed() {
+        const posts = JSON.parse(localStorage.getItem('public_posts') || "[]");
+        const area = document.getElementById('feed-area');
+        area.innerHTML = posts.map(p => {
+            let mediaHTML = "";
+            if(p.media) {
+                if(p.type === 'image') {
+                    mediaHTML = `<img src="${p.media}" class="media-content" onerror="this.style.display='none'">`;
+                } else {
+                    // แปลงลิงก์ YouTube ปกติเป็นแบบ Embed
+                    let vidId = p.media.split('v=')[1] || p.media.split('/').pop();
+                    mediaHTML = `<iframe class="media-content" height="250" src="https://www.youtube.com/embed/${vidId}" frameborder="0" allowfullscreen></iframe>`;
+                }
+            }
+            return `
+                <div class="box">
+                    <h3 style="margin:0; color:var(--blue);">${p.title}</h3>
+                    <p style="font-size:12px; color:#8b949e;">โดย: ${p.name} | ${p.time}</p>
+                    <p>${p.content}</p>
+                    ${mediaHTML}
+                </div>
+            `;
+        }).join('') || "ยังไม่มีใครโพสต์อะไรเลย...";
+    }
+
+    function checkAdmin() {
+        const key = document.getElementById('admin-key').value;
+        if(key === "2222") { // รหัสผ่านของคุณพัด
+            alert("ยินดีต้อนรับแอดมินพัด! คุณสามารถลบโพสต์ได้ในหน้าจอถัดไป");
+            // ส่วนนี้คุณพัดสามารถเขียนเพิ่มเพื่อจัดการโพสต์ได้
+        } else {
+            alert("รหัสไม่ถูกต้อง");
+        }
+    }
+
+    window.onload = renderFeed;
+</script>
+</body>
+</html>
